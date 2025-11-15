@@ -415,10 +415,10 @@ if __name__ == "__main__":
     QASPER_PATH = "qasper-dev-v0.3.json"
     
     # Run comprehensive comparison
-    results = run_comprehensive_comparison(QASPER_PATH, num_papers=10)
+    results = run_comprehensive_comparison(QASPER_PATH, num_papers=100)
     
     # Visualize
     plot_comparison(results)
     
     # Statistical test
-    compute_statistical_significance(QASPER_PATH, num_papers=10)
+    compute_statistical_significance(QASPER_PATH, num_papers=100)
