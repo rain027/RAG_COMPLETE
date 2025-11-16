@@ -117,6 +117,91 @@ class HybridRetriever:
         return [all_chunk_ids[idx] for idx in top_k_indices]
 
 
+    #Test if multi-signal actually helps
+class SemanticOnlyBudgetAware:
+    """
+    Budget-aware retrieval using ONLY semantic similarity
+    Tests if multi-signal scoring actually helps or if budget is doing all the work
+    """
+    
+    def __init__(self, indexer, token_budget=4000):
+        self.indexer = indexer
+        self.token_budget = token_budget
+        print(f"[SemanticOnlyBudgetAware] Initialized with budget={token_budget}")
+    
+    def retrieve(self, query: str, top_k: int = 10) -> List[str]:
+        """
+        Retrieve chunks using:
+        1. Pure semantic similarity (cosine)
+        2. Budget-aware selection (knapsack optimization)
+        """
+        
+        # Step 1: Encode query
+        query_embedding = self.indexer.encoder.encode([query])[0]
+        
+        # Step 2: Compute semantic similarity with ALL chunks
+        similarities = np.dot(
+            self.indexer.chunk_embeddings,
+            query_embedding
+        ) / (
+            np.linalg.norm(self.indexer.chunk_embeddings, axis=1) *
+            np.linalg.norm(query_embedding)
+        )
+        
+        # Step 3: Get top-50 candidates (initial filtering)
+        top_50_indices = np.argsort(similarities)[::-1][:50]
+        all_chunk_ids = list(self.indexer.chunks.keys())
+        candidates = [all_chunk_ids[idx] for idx in top_50_indices]
+        
+        # Step 4: Create score dictionary
+        scores = {}
+        for i, chunk_id in enumerate(candidates):
+            scores[chunk_id] = similarities[top_50_indices[i]]
+        
+        # Step 5: Compute efficiency ratio (score per token)
+        efficiency = {}
+        for chunk_id in candidates:
+            chunk = self.indexer.chunks[chunk_id]
+            token_count = chunk.token_count
+            
+            # Avoid division by zero
+            if token_count == 0:
+                token_count = 1
+            
+            efficiency[chunk_id] = scores[chunk_id] / token_count
+        
+        # Step 6: Sort by efficiency (greedy knapsack)
+        sorted_chunks = sorted(
+            candidates,
+            key=lambda x: efficiency[x],
+            reverse=True
+        )
+        
+        # Step 7: Budget-aware selection
+        selected = []
+        total_tokens = 0
+        
+        for chunk_id in sorted_chunks:
+            chunk = self.indexer.chunks[chunk_id]
+            
+            # Check if adding this chunk would exceed budget
+            if total_tokens + chunk.token_count <= self.token_budget:
+                selected.append(chunk_id)
+                total_tokens += chunk.token_count
+                
+                # Optional: early stopping if we have enough high-quality chunks
+                if len(selected) >= top_k and scores[chunk_id] < 0.5:
+                    break
+        
+        # Step 8: Rerank selected chunks by original semantic score (not efficiency)
+        selected.sort(key=lambda x: scores[x], reverse=True)
+        
+        # Debug output (optional - comment out for production)
+        # print(f"  Selected {len(selected)} chunks, {total_tokens}/{self.token_budget} tokens")
+        
+        return selected
+
+
 # ============================================================================
 # COMPREHENSIVE EVALUATION
 # ============================================================================
@@ -151,7 +236,8 @@ def run_complete_comparison(qasper_path: str, num_papers: int = 10):
         '4. Standard RAG (Semantic Only)': BaselineRAG(indexer),
         '5. Semantic + Lexical (0.6/0.4)': SemanticPlusLexicalRetriever(indexer, scorer),
         '6. Multi-Signal (No Budget)': FullMultiSignalRetriever(indexer, scorer),
-        '7. Budget-Aware (Ours)': SimpleTier1Retriever(indexer, scorer, token_budget=4000)
+        '7. Budget-Aware (Ours)': SimpleTier1Retriever(indexer, scorer, token_budget=4000),
+        '8. Semantic + Budget (Test)': SemanticOnlyBudgetAware(indexer, token_budget=4000),  # NEW!
     }
     
     # Store all raw results for statistical tests
