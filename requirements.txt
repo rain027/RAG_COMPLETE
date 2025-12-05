@@ -20,16 +20,7 @@ seaborn>=0.12.0
 # Statistical analysis
 scipy>=1.9.0
 
-# Optional: For Tier 2 (cross-encoder reranking)
-# transformers>=4.30.0
-
-# Optional: For Tier 3 (agentic retrieval with Claude)
-# anthropic>=0.18.0
-
-# Optional: For GPU acceleration
-# torch>=2.0.0+cu118  # CUDA 11.8
-# --extra-index-url https://download.pytorch.org/whl/cu118
-
 datasets
 requests
 pyarrow==16.0.0
+
